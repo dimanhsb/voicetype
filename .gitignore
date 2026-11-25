@@ -1,0 +1,15 @@
+# Portable toolchain (downloaded locally, never installed globally)
+.tools/
+
+# Built binaries and distribution folder
+*.exe
+dist/
+*.log
+coverage.out
+
+# Local secrets / user key files (never commit private overrides)
+api_key.txt
+.env
+
+# Generated Windows resource object (rebuilt by build.ps1)
+rsrc_windows_*.syso
