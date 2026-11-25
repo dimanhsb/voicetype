@@ -154,6 +154,7 @@ func New(version string, paths config.Paths, cfg config.Config, apiKey, apiKeySr
 		OnToggleSoundCues:    c.onToggleSoundCues,
 		OnToggleDebugWAVs:    c.onToggleDebugWAVs,
 		OnToggleAICleanup:    c.onToggleAICleanup,
+		OnSetAPIKey:          func() { c.post(c.onSetAPIKey) },
 		OnOpenSettings:       func() { tray.OpenPathInShell(c.paths.ConfigFile) },
 		OnOpenLog:            func() { tray.OpenPathInShell(logging.Default().FilePath()) },
 		OnQuit:               c.RequestQuit,
@@ -175,6 +176,12 @@ func (c *Controller) Run() {
 	defer close(c.doneCh)
 	reloadTicker := time.NewTicker(3 * time.Second)
 	defer reloadTicker.Stop()
+
+	// First-run convenience: if no Soniox API key is configured yet, guide the user immediately!
+	if strings.TrimSpace(c.getAPIKey()) == "" && !c.promptOpen {
+		c.promptOpen = true
+		go c.promptForNewAPIKey(0, "", "")
+	}
 
 	for {
 		select {
@@ -437,6 +444,18 @@ func (c *Controller) startSession(sessionID uint64) {
 	c.checkConfigReload()
 	cfg := c.getConfig()
 
+	// If no Soniox API key is set yet, open the guided setup dialog right away instead of failing with 401!
+	if strings.TrimSpace(c.getAPIKey()) == "" {
+		c.sm.OnCancel()
+		c.hk.SetMode(hotkey.ModeIdle)
+		c.updateTrayState(tray.IconIdle, fmt.Sprintf("VoiceType — Idle (%s)", cfg.Hotkey))
+		if !c.promptOpen {
+			c.promptOpen = true
+			go c.promptForNewAPIKey(0, "", "")
+		}
+		return
+	}
+
 	// Remember target window BEFORE anything can touch focus!
 	c.targetHWND = insert.GetForegroundWindow()
 	c.sessionStart = time.Now()
@@ -621,7 +640,9 @@ func (c *Controller) handleStreamError(sessionID, gen uint64, err error, fatal b
 		c.updateTrayState(tray.IconError, "VoiceType — Error")
 		c.renderOverlay()
 
-		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") || strings.Contains(strings.ToLower(err.Error()), "unauthorized") || strings.Contains(strings.ToLower(err.Error()), "invalid_api_key") {
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "402") || strings.Contains(err.Error(), "403") ||
+			strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "invalid_api_key") || strings.Contains(errLower, "insufficient_credits") {
 			if !c.promptOpen {
 				c.promptOpen = true
 				c.cfgMu.RLock()
@@ -672,9 +693,35 @@ func (c *Controller) handleStreamError(sessionID, gen uint64, err error, fatal b
 	}
 }
 
+func (c *Controller) onSetAPIKey() {
+	if c.promptOpen {
+		return
+	}
+	c.promptOpen = true
+	c.cfgMu.RLock()
+	src := c.apiKeySrc
+	hasKey := strings.TrimSpace(c.apiKey) != ""
+	c.cfgMu.RUnlock()
+	if hasKey {
+		go c.promptForNewAPIKey(0, "manual", src)
+	} else {
+		go c.promptForNewAPIKey(0, "", "")
+	}
+}
+
 func (c *Controller) promptForNewAPIKey(originSessionID uint64, errMsg, activeSource string) {
-	msg := fmt.Sprintf("Soniox rejected the current API key from %s (%s).\nPaste a valid Soniox API key below:",
-		activeSource, transcript.TruncateRunes(errMsg, 60))
+	var msg string
+	switch {
+	case errMsg == "":
+		msg = "Welcome to VoiceType! A Soniox API key is required for real-time speech recognition."
+	case errMsg == "manual":
+		msg = fmt.Sprintf("Update your Soniox API key (current source: %s).", activeSource)
+	case strings.Contains(errMsg, "402") || strings.Contains(strings.ToLower(errMsg), "insufficient_credits"):
+		msg = "Your Soniox account appears out of credit. Top up a small balance in Soniox Console, or paste another API key:"
+	default:
+		msg = fmt.Sprintf("Soniox rejected the API key from %s (%s).",
+			activeSource, transcript.TruncateRunes(errMsg, 56))
+	}
 	key, ok := tray.PromptAPIKey(msg)
 	c.post(func() {
 		c.promptOpen = false
@@ -694,7 +741,7 @@ func (c *Controller) promptForNewAPIKey(originSessionID uint64, errMsg, activeSo
 			logging.Infof("config: updated Soniox API key via prompt (effectiveSource=%s, key=%s)", effSrc, logging.MaskSecret(effKey))
 		}
 		// Only dismiss Error state if no newer dictation session started while the prompt was open!
-		if c.sm.SessionID() == originSessionID && c.sm.State() == state.Error {
+		if originSessionID != 0 && c.sm.SessionID() == originSessionID && c.sm.State() == state.Error {
 			c.sm.OnCancel()
 			c.ov.Hide()
 			c.updateTrayState(tray.IconIdle, fmt.Sprintf("VoiceType — Idle (%s)", c.getConfig().Hotkey))

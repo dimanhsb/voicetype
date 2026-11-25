@@ -1,3 +1,9 @@
-# Copy this file to `api_key.txt` in the same folder as VoiceType.exe
-# and paste your Soniox API key on a single line (without the leading `#`):
+# How to get a Soniox API key for VoiceType:
+# 1. Sign in at https://console.soniox.com
+# 2. Go to Organization -> Billing and add a small amount of prepaid credit
+#    (real-time speech is pay-as-you-go at ~$0.12/hour, so $5 lasts 40+ hours).
+# 3. Go to Project -> API keys, create a new API key, and paste it below.
+#
+# Copy this file to `api_key.txt` next to VoiceType.exe and replace the line below
+# (without the leading `#`):
 # snx_proj_your_soniox_api_key_here

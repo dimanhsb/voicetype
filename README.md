@@ -4,8 +4,11 @@ Lightweight, single-executable Windows 11 system-tray voice-typing app powered b
 
 ## Quick Start
 
-1. Place your Soniox API key in **`api_key.txt`** next to `VoiceType.exe` (see [`api_key.example.txt`](./api_key.example.txt)), set the `SONIOX_API_KEY` environment variable, or enter it in the first-run prompt dialog.
-2. Run **`VoiceType.exe`** (starts silently in the Windows system tray with the teal microphone icon — no console window, no installer, no runtime required).
+1. **Get a Soniox API key**:
+   - Sign in at **[console.soniox.com](https://console.soniox.com)**.
+   - Open **Organization → Billing** and add a small amount of prepaid Soniox credit (real-time speech is pay-as-you-go at ~$0.12/hour, so $5 lasts 40+ hours of speaking).
+   - Open **Project → API keys** and create a new API key.
+2. Run **`VoiceType.exe`** (starts silently in the Windows system tray with the teal microphone icon — no console window, no installer, no runtime required). On first launch it opens a guided setup dialog where you can paste your key (or place it in `api_key.txt` next to `VoiceType.exe` — see [`api_key.example.txt`](./api_key.example.txt) — or set `SONIOX_API_KEY`).
 3. Press **`F9`** anywhere to start speaking (English, Greek, or mixed in the same sentence).
 4. Press **`F9`** or **`Enter`** to insert the transcript immediately into the focused app.
 5. Press **`Esc`** once to enter **Edit Mode** (edit text while the microphone keeps streaming new words below; press `Enter` or `F9` to insert everything).
