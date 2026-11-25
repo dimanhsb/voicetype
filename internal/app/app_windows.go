@@ -55,8 +55,9 @@ type Controller struct {
 	reconnecting bool
 	pendingAudio [][]byte // bounded 16s audio backlog preserved across reconnect backoff!
 	wavWriter    *audio.WAVWriter
-	noticeTimer  *time.Timer
-	promptOpen   bool
+	noticeTimer    *time.Timer
+	promptOpen     bool
+	modelCheckOpen bool
 
 	// Subsystems:
 	capturer *audio.Capturer
@@ -155,6 +156,7 @@ func New(version string, paths config.Paths, cfg config.Config, apiKey, apiKeySr
 		OnToggleDebugWAVs:    c.onToggleDebugWAVs,
 		OnToggleAICleanup:    c.onToggleAICleanup,
 		OnSetAPIKey:          func() { c.post(c.onSetAPIKey) },
+		OnCheckModelUpdate:   func() { c.post(func() { c.checkModelUpdate(true) }) },
 		OnOpenSettings:       func() { tray.OpenPathInShell(c.paths.ConfigFile) },
 		OnOpenLog:            func() { tray.OpenPathInShell(logging.Default().FilePath()) },
 		OnQuit:               c.RequestQuit,
@@ -181,6 +183,11 @@ func (c *Controller) Run() {
 	if strings.TrimSpace(c.getAPIKey()) == "" && !c.promptOpen {
 		c.promptOpen = true
 		go c.promptForNewAPIKey(0, "", "")
+	} else if strings.TrimSpace(c.getAPIKey()) != "" {
+		// Quiet background check for a newer Soniox real-time model (free GET /v1/models metadata call)
+		time.AfterFunc(3*time.Second, func() {
+			c.post(func() { c.checkModelUpdate(false) })
+		})
 	}
 
 	for {
@@ -650,6 +657,9 @@ func (c *Controller) handleStreamError(sessionID, gen uint64, err error, fatal b
 				c.cfgMu.RUnlock()
 				go c.promptForNewAPIKey(sessionID, err.Error(), src)
 			}
+		} else if strings.Contains(errLower, "model_not_available") || strings.Contains(errLower, "invalid_model") {
+			c.scheduleErrorAutoHide(sessionID, 5*time.Second)
+			c.checkModelUpdate(true)
 		} else {
 			c.scheduleErrorAutoHide(sessionID, 5*time.Second)
 		}
@@ -691,6 +701,79 @@ func (c *Controller) handleStreamError(sessionID, gen uint64, err error, fatal b
 			})
 		})
 	}
+}
+
+func (c *Controller) checkModelUpdate(interactive bool) {
+	if c.modelCheckOpen {
+		return
+	}
+	apiKey := strings.TrimSpace(c.getAPIKey())
+	if apiKey == "" {
+		if interactive {
+			c.onSetAPIKey()
+		}
+		return
+	}
+	c.modelCheckOpen = true
+	cfg := c.getConfig()
+
+	go func(key, curModel, dismissed string, showUpToDate bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		models, err := soniox.FetchModels(ctx, key, soniox.DefaultModelsURL)
+		if err != nil {
+			logging.Warnf("soniox: model update check failed: %v", err)
+			if showUpToDate {
+				tray.ShowInfoDialog("VoiceType — Soniox Model Check", "Could not reach Soniox API to check models:\n"+err.Error())
+			}
+			c.post(func() { c.modelCheckOpen = false })
+			return
+		}
+
+		latest, ok := soniox.SelectLatestRealtimeModel(models)
+		if !ok {
+			if showUpToDate {
+				tray.ShowInfoDialog("VoiceType — Soniox Model Check", "No real-time models were returned by Soniox.")
+			}
+			c.post(func() { c.modelCheckOpen = false })
+			return
+		}
+
+		logging.Infof("soniox: model check complete (current=%s, latest=%s)", curModel, latest.ID)
+		if !soniox.IsModelOlder(curModel, latest.ID) {
+			if showUpToDate {
+				tray.ShowInfoDialog("VoiceType — Soniox Model Check",
+					fmt.Sprintf("You are already using the latest Soniox real-time model:\n\n%s (%s)", latest.ID, latest.Name))
+			}
+			c.post(func() { c.modelCheckOpen = false })
+			return
+		}
+
+		// Don't re-prompt automatically if the user already dismissed this exact version
+		if !showUpToDate && dismissed == latest.ID {
+			logging.Infof("soniox: skipping prompt for previously dismissed model %s", latest.ID)
+			c.post(func() { c.modelCheckOpen = false })
+			return
+		}
+
+		accepted := tray.PromptModelUpdate(curModel, latest.ID, latest.Name)
+		c.post(func() {
+			c.modelCheckOpen = false
+			if accepted {
+				c.saveConfig(func(cfg *config.Config) {
+					cfg.Model = latest.ID
+					cfg.DismissedModelUpdate = ""
+				})
+				logging.Infof("soniox: upgraded model %s -> %s", curModel, latest.ID)
+			} else {
+				c.saveConfig(func(cfg *config.Config) {
+					cfg.DismissedModelUpdate = latest.ID
+				})
+				logging.Infof("soniox: user declined upgrade to %s", latest.ID)
+			}
+		})
+	}(apiKey, cfg.Model, cfg.DismissedModelUpdate, interactive)
 }
 
 func (c *Controller) onSetAPIKey() {
@@ -739,6 +822,9 @@ func (c *Controller) promptForNewAPIKey(originSessionID uint64, errMsg, activeSo
 			c.apiKeySrc = effSrc
 			c.cfgMu.Unlock()
 			logging.Infof("config: updated Soniox API key via prompt (effectiveSource=%s, key=%s)", effSrc, logging.MaskSecret(effKey))
+			if effKey != "" {
+				c.checkModelUpdate(false)
+			}
 		}
 		// Only dismiss Error state if no newer dictation session started while the prompt was open!
 		if originSessionID != 0 && c.sm.SessionID() == originSessionID && c.sm.State() == state.Error {

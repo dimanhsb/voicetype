@@ -35,9 +35,10 @@ const (
 
 // Config holds all persistent user settings stored in %APPDATA%\VoiceType\config.json.
 type Config struct {
-	APIKey              string   `json:"api_key"`
-	Model               string   `json:"model"`
-	MicrophoneID        string   `json:"microphone_id"`
+	APIKey               string   `json:"api_key"`
+	Model                string   `json:"model"`
+	DismissedModelUpdate string   `json:"dismissed_model_update,omitempty"`
+	MicrophoneID         string   `json:"microphone_id"`
 	MicrophoneName      string   `json:"microphone_name"`
 	GainPercent         int      `json:"gain_percent"`
 	OverlayOpacity      int      `json:"overlay_opacity"`

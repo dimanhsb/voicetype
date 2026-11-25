@@ -30,6 +30,8 @@ Right-click the teal microphone icon in the system tray to configure:
 - **Dictation Mode** (`Toggle` or `Push-to-Talk`)
 - **Recent Transcripts** (last 10 saved transcripts — click any item to copy to clipboard)
 - **Start with Windows**, **Sound Cues**, **Save Debug WAVs**, **AI Clean-up (Claude)**
+- **Check Soniox Model** (automatically checks Soniox's `/v1/models` endpoint at startup and offers one-click upgrade whenever a newer `stt-rt-vN` real-time model is released)
+- **Set Soniox API Key…** (guided setup dialog with direct link to Soniox Console)
 - **Open Settings File** (`%APPDATA%\VoiceType\config.json`) — changes hot-reload automatically
 - **Open Log File** (`%APPDATA%\VoiceType\logs\voicetype.log`) — API keys are always redacted
 

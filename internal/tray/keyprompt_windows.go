@@ -53,7 +53,51 @@ var (
 	procIsDialogMessageW = user32.NewProc("IsDialogMessageW")
 	procGetDpiForSystem  = user32.NewProc("GetDpiForSystem")
 	procGetKeyState      = user32.NewProc("GetKeyState")
+	procMessageBoxW      = user32.NewProc("MessageBoxW")
 )
+
+const (
+	mbOK              = 0x00000000
+	mbYesNo           = 0x00000004
+	mbIconInformation = 0x00000040
+	mbSetForeground   = 0x00010000
+	mbTopmost         = 0x00040000
+	idYes             = 6
+)
+
+// PromptModelUpdate asks the user via a native dialog whether to upgrade their configured
+// Soniox real-time model (e.g. stt-rt-v6 -> stt-rt-v7). Returns true if the user clicks Yes.
+func PromptModelUpdate(currentModel, latestID, latestName string) bool {
+	title, _ := syscall.UTF16PtrFromString("VoiceType — Newer Soniox Model Available")
+	desc := latestID
+	if strings.TrimSpace(latestName) != "" && latestName != latestID {
+		desc = latestID + " (" + latestName + ")"
+	}
+	msgText := "A newer Soniox real-time speech model is available!\n\n" +
+		"Current model:  " + currentModel + "\n" +
+		"Latest model:   " + desc + "\n\n" +
+		"Would you like VoiceType to switch to " + latestID + " now?"
+	msg, _ := syscall.UTF16PtrFromString(msgText)
+	r, _, _ := procMessageBoxW.Call(
+		0,
+		uintptr(unsafe.Pointer(msg)),
+		uintptr(unsafe.Pointer(title)),
+		uintptr(mbYesNo|mbIconInformation|mbSetForeground|mbTopmost),
+	)
+	return r == idYes
+}
+
+// ShowInfoDialog displays a simple native informational dialog.
+func ShowInfoDialog(titleText, bodyText string) {
+	title, _ := syscall.UTF16PtrFromString(titleText)
+	msg, _ := syscall.UTF16PtrFromString(bodyText)
+	_, _, _ = procMessageBoxW.Call(
+		0,
+		uintptr(unsafe.Pointer(msg)),
+		uintptr(unsafe.Pointer(title)),
+		uintptr(mbOK|mbIconInformation|mbSetForeground|mbTopmost),
+	)
+}
 
 type keyPromptState struct {
 	hwnd     uintptr

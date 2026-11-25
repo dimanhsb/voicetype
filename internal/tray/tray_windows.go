@@ -58,6 +58,7 @@ type Callbacks struct {
 	OnToggleDebugWAVs    func(enabled bool)
 	OnToggleAICleanup    func(enabled bool)
 	OnSetAPIKey          func()
+	OnCheckModelUpdate   func()
 	OnOpenSettings       func()
 	OnOpenLog            func()
 	OnQuit               func()
@@ -147,6 +148,7 @@ const (
 	cmdToggleSounds   = 1401
 	cmdToggleDebugWAV = 1402
 	cmdToggleAIClean  = 1403
+	cmdCheckModel     = 1498
 	cmdSetAPIKey      = 1499
 	cmdOpenSettings   = 1500
 	cmdOpenLog        = 1501
@@ -703,6 +705,7 @@ func (t *Icon) showContextMenu(hwnd uintptr) {
 	appendMenuItem(root, optFlag(st.Config.AICleanupEnabled), cmdToggleAIClean, "AI Clean-up (Claude)")
 
 	appendMenuItem(root, mfSeparator, 0, "")
+	appendMenuItem(root, mfString, cmdCheckModel, fmt.Sprintf("Check Soniox Model (%s)…", st.Config.Model))
 	appendMenuItem(root, mfString, cmdSetAPIKey, "Set Soniox API Key…")
 	appendMenuItem(root, mfString, cmdOpenSettings, "Open Settings File")
 	appendMenuItem(root, mfString, cmdOpenLog, "Open Log File")
@@ -788,6 +791,10 @@ func (t *Icon) showContextMenu(hwnd uintptr) {
 	case id == cmdToggleAIClean:
 		if t.cb.OnToggleAICleanup != nil {
 			go t.cb.OnToggleAICleanup(!st.Config.AICleanupEnabled)
+		}
+	case id == cmdCheckModel:
+		if t.cb.OnCheckModelUpdate != nil {
+			go t.cb.OnCheckModelUpdate()
 		}
 	case id == cmdSetAPIKey:
 		if t.cb.OnSetAPIKey != nil {
